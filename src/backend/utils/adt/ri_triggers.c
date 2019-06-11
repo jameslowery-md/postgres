@@ -427,6 +427,8 @@ RI_FKey_check(TriggerData *trigdata)
 		}
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
+		elog(LOG, "RI_FKey_check JML: %s", querybuf.data);
+
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 							 &qkey, fk_rel, pk_rel, true);
@@ -562,9 +564,13 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 		}
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
+		elog(LOG, "ri_Check_Pk_Match JML: %s", querybuf.data);
+
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 							 &qkey, fk_rel, pk_rel, true);
+	} else {
+		elog(LOG, "ri_Check_Pk_Match JML: found matching query plan");
 	}
 
 	/*
@@ -823,9 +829,13 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 				}
 				appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
+				elog(LOG, "ri_restrict JML: %s", querybuf.data);
+
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 									 &qkey, fk_rel, pk_rel, true);
+			} else {
+				elog(LOG, "ri_restrict JML: found cached query plan");
 			}
 
 			/*
@@ -982,9 +992,14 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 					queryoids[i] = pk_type;
 				}
 
+
+				elog(LOG, "RI_FKey_cascade_del JML: %s", querybuf.data);
+
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 									 &qkey, fk_rel, pk_rel, true);
+			} else {
+				elog(LOG, "RI_FKey_cascade_del JML: found cached query plan");
 			}
 
 			/*
@@ -1168,9 +1183,13 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 				}
 				appendStringInfoString(&querybuf, qualbuf.data);
 
+				elog(LOG, "RI_FKey_cascade_upd JML - %s", querybuf.data);
+
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys * 2, queryoids,
 									 &qkey, fk_rel, pk_rel, true);
+			} else {
+				elog(LOG, "RI_FKey_cascade_upd JML - found cached query plan");
 			}
 
 			/*
@@ -1389,9 +1408,13 @@ ri_setnull(TriggerData *trigdata)
 				}
 				appendStringInfoString(&querybuf, qualbuf.data);
 
+				elog(LOG, "ri_setnull JML: %s", querybuf.data);
+
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 									 &qkey, fk_rel, pk_rel, true);
+			} else {
+				elog(LOG, "ri_setnull JML - found cached query plan");
 			}
 
 			/*
@@ -2026,6 +2049,8 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
+	elog(LOG, "RI_Initial_Check JML: %s", querybuf.data);
+
 	/*
 	 * Generate the plan.  We don't need to cache it, and there are no
 	 * arguments to the plan.
@@ -2602,11 +2627,22 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
 
+	const char *mysource_rel = RelationGetRelationName(source_rel);
+	const char *mysource_ns = get_namespace_name(RelationGetNamespace(source_rel));
+	const char *myquery_rel = RelationGetRelationName(query_rel);
+	const char *myquery_ns = get_namespace_name(RelationGetNamespace(query_rel));
+
+	for(int i = 0; i < riinfo->nkeys; i++) {
+		elog(LOG, " %s.%s/%s.%s - key=%lu JML", mysource_ns, mysource_rel, myquery_ns, myquery_rel, vals[i]);
+	}
+
 	/* Finally we can run the query. */
 	spi_result = SPI_execute_snapshot(qplan,
 									  vals, nulls,
 									  test_snapshot, crosscheck_snapshot,
 									  false, false, limit);
+
+	elog(LOG, " executed JML");
 
 	/* Restore UID and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -2633,6 +2669,8 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   new_tuple ? new_tuple : old_tuple,
 						   NULL,
 						   qkey->constr_queryno);
+
+	elog(LOG, " leaving ri_PerformCheck JML");
 
 	return SPI_processed != 0;
 }
